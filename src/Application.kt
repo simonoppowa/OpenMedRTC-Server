@@ -1,5 +1,6 @@
 package software.openmedrtc
 
+import com.google.gson.Gson
 import io.ktor.application.*
 import io.ktor.response.*
 import io.ktor.request.*
@@ -19,6 +20,11 @@ import software.openmedrtc.Constants.PATH_REST
 import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
+import software.openmedrtc.database.entity.Channel
+import java.util.concurrent.ConcurrentHashMap
+
+private val gson = Gson()
+private val medChannels = ConcurrentHashMap<String, Channel>()
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -70,24 +76,26 @@ fun Application.module(testing: Boolean = false) {
         }
 
         // Socket
-        webSocket(PATH_WEBSOCKET) {
-            println("User connected")
-            send(Frame.Text("Successfully connected"))
-            try {
-                while (true) {
-                    val frame = incoming.receive()
-                    if (frame is Frame.Text) {
-                        val message = frame.readText()
-                        println("Message received: $message")
-                        send(Frame.Text("Client said: $message"))
+        authenticate(AUTHENTICATION_KEY_BASIC) {
+            webSocket(PATH_WEBSOCKET) {
+                println("User connected")
+                send(Frame.Text("Successfully connected"))
+                try {
+                    while (true) {
+                        val frame = incoming.receive()
+                        if (frame is Frame.Text) {
+                            val message = frame.readText()
+                            println("Message received: $message")
+                            send(Frame.Text("Client said: $message"))
+                        }
                     }
+                } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
+                    println("Channel closed")
+                } catch (e: Throwable) {
+                    e.printStackTrace()
                 }
-            } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
-                println("Channel closed")
-            } catch (e: Throwable) {
-                e.printStackTrace()
-            }
 
+            }
         }
     }
 }
