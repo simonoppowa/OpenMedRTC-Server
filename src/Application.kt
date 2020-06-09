@@ -12,8 +12,12 @@ import io.ktor.http.cio.websocket.*
 import java.time.*
 import io.ktor.auth.*
 import io.ktor.gson.*
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
 import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
+import software.openmedrtc.Constants.PATH_REST
+import software.openmedrtc.Constants.PATH_WEBSITE
+import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -54,28 +58,37 @@ fun Application.module(testing: Boolean = false) {
     routing {
 
         // Website
-        get("/") {
+        get(PATH_WEBSITE) {
             call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
         // REST
         authenticate(AUTHENTICATION_KEY_BASIC) {
-            get("/rest") {
+            get(PATH_REST) {
                 call.respond(mapOf("hello" to "world"))
             }
         }
 
         // Socket
-        webSocket("/myws/echo") {
-            send(Frame.Text("Hi from server"))
-            while (true) {
-                val frame = incoming.receive()
-                if (frame is Frame.Text) {
-                    send(Frame.Text("Client said: " + frame.readText()))
+        webSocket(PATH_WEBSOCKET) {
+            println("User connected")
+            send(Frame.Text("Successfully connected"))
+            try {
+                while (true) {
+                    val frame = incoming.receive()
+                    if (frame is Frame.Text) {
+                        val message = frame.readText()
+                        println("Message received: $message")
+                        send(Frame.Text("Client said: $message"))
+                    }
                 }
+            } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
+                println("Channel closed")
+            } catch (e: Throwable) {
+                e.printStackTrace()
             }
-        }
 
+        }
     }
 }
 
