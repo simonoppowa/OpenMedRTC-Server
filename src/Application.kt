@@ -18,11 +18,18 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 @Suppress("unused") // Referenced in application.conf
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
+    // Init Ktor Features
     install(CallLogging) {
-        level = Level.INFO
+        level = Level.DEBUG
         filter { call -> call.request.path().startsWith("/") }
     }
-
+    install(Authentication) {
+    }
+    install(ContentNegotiation) {
+        gson {
+            setPrettyPrinting()
+        }
+    }
     install(io.ktor.websocket.WebSockets) {
         pingPeriod = Duration.ofSeconds(15)
         timeout = Duration.ofSeconds(15)
@@ -30,19 +37,15 @@ fun Application.module(testing: Boolean = false) {
         masking = false
     }
 
-    install(Authentication) {
-    }
-
-    install(ContentNegotiation) {
-        gson {
-        }
-    }
 
     routing {
+
+        // Website
         get("/") {
             call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
+        // Socket
         webSocket("/myws/echo") {
             send(Frame.Text("Hi from server"))
             while (true) {
@@ -53,6 +56,7 @@ fun Application.module(testing: Boolean = false) {
             }
         }
 
+        // REST
         get("/json/gson") {
             call.respond(mapOf("hello" to "world"))
         }
