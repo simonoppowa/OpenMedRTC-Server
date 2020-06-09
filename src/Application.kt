@@ -12,6 +12,9 @@ import io.ktor.http.cio.websocket.*
 import java.time.*
 import io.ktor.auth.*
 import io.ktor.gson.*
+import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
+import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
+import software.openmedrtc.database.UserDatabase
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -24,6 +27,16 @@ fun Application.module(testing: Boolean = false) {
         filter { call -> call.request.path().startsWith("/") }
     }
     install(Authentication) {
+        basic(name = AUTHENTICATION_KEY_BASIC) {
+            realm = AUTHENTICATION_REALM_BASIC
+            validate { credentials ->
+                if(UserDatabase.usersRegistered[credentials.name]?.passwordHash == credentials.password) {
+                    UserIdPrincipal(credentials.name)
+                } else {
+                    null
+                }
+            }
+        }
     }
     install(ContentNegotiation) {
         gson {
@@ -45,6 +58,13 @@ fun Application.module(testing: Boolean = false) {
             call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
+        // REST
+        authenticate(AUTHENTICATION_KEY_BASIC) {
+            get("/rest") {
+                call.respond(mapOf("hello" to "world"))
+            }
+        }
+
         // Socket
         webSocket("/myws/echo") {
             send(Frame.Text("Hi from server"))
@@ -56,10 +76,6 @@ fun Application.module(testing: Boolean = false) {
             }
         }
 
-        // REST
-        get("/json/gson") {
-            call.respond(mapOf("hello" to "world"))
-        }
     }
 }
 

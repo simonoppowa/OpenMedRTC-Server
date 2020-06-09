@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
 object UserDatabase {
     val usersRegistered = ConcurrentHashMap<String, User>().apply {
         put("chrome@gmail.com", Medical("chrome@gmail.com", "Dr", "Chromium", "Chrome", "chrome", "General"))
-        put("android_29", Medical("android_29", "", "Android", "Pie", "test", "General"))
-        put("android_26", Patient("android_26", "", "Android", "Nougat", "test"))
+        put("android_29@gmail.com", Medical("android_29@gmail.com", "", "Android", "Pie", "test", "General"))
+        put("android_26@gmail.com", Patient("android_26@gmail.com", "", "Android", "Nougat", "test"))
     }
 
 }
