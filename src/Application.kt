@@ -23,6 +23,7 @@ import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.Channel
 import software.openmedrtc.database.entity.Medical
 import software.openmedrtc.database.entity.MedicalConnectionSession
+import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
 import java.util.concurrent.ConcurrentHashMap
 
@@ -103,9 +104,12 @@ fun Application.module(testing: Boolean = false) {
                         }
                     }
                 } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
-                    println("User disconnected from websocket: ${connectedUser.email}")
+                    println("Websocket close received")
                 } catch (e: Throwable) {
                     e.printStackTrace()
+                } finally {
+                    medChannels.disconnectUser(connectedUser)
+                    println("User disconnected from websocket: ${connectedUser.email}")
                 }
 
             }
