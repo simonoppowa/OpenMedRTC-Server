@@ -23,7 +23,7 @@ import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.Channel
 import software.openmedrtc.database.entity.Medical
 import software.openmedrtc.database.entity.MedicalConnectionSession
-import software.openmedrtc.dto.MedicalDTO
+import software.openmedrtc.helper.Extensions.mapMedicalsOnline
 import java.util.concurrent.ConcurrentHashMap
 
 private val gson = Gson()
@@ -74,7 +74,7 @@ fun Application.module(testing: Boolean = false) {
         // REST
         authenticate(AUTHENTICATION_KEY_BASIC) {
             get(PATH_REST) {
-                call.respond(mapMedicalsOnline())
+                call.respond(medChannels.mapMedicalsOnline())
             }
         }
 
@@ -112,6 +112,3 @@ fun Application.module(testing: Boolean = false) {
         }
     }
 }
-
-private fun mapMedicalsOnline(): List<MedicalDTO> = medChannels.values.map { MedicalDTO(it.hostSession.medical) }
-
