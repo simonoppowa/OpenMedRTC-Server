@@ -21,6 +21,9 @@ import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.Channel
+import software.openmedrtc.database.entity.Medical
+import software.openmedrtc.database.entity.MedicalConnectionSession
+import software.openmedrtc.dto.MedicalDTO
 import java.util.concurrent.ConcurrentHashMap
 
 private val gson = Gson()
@@ -71,15 +74,25 @@ fun Application.module(testing: Boolean = false) {
         // REST
         authenticate(AUTHENTICATION_KEY_BASIC) {
             get(PATH_REST) {
-                call.respond(mapOf("hello" to "world"))
+                call.respond(mapMedicalsOnline())
             }
         }
 
         // Socket
         authenticate(AUTHENTICATION_KEY_BASIC) {
             webSocket(PATH_WEBSOCKET) {
-                println("User connected")
+                val principal: UserIdPrincipal? = call.authentication.principal()
+                val connectedUser = UserDatabase.usersRegistered[principal?.name] ?: return@webSocket
+
+                println("User connected to websocket: ${connectedUser.email}")
                 send(Frame.Text("Successfully connected"))
+
+                if (connectedUser is Medical) {
+                    medChannels[connectedUser.email] =
+                        Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
+                    println("Channel created")
+                }
+
                 try {
                     while (true) {
                         val frame = incoming.receive()
@@ -90,7 +103,7 @@ fun Application.module(testing: Boolean = false) {
                         }
                     }
                 } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
-                    println("Channel closed")
+                    println("User disconnected from websocket: ${connectedUser.email}")
                 } catch (e: Throwable) {
                     e.printStackTrace()
                 }
@@ -99,4 +112,6 @@ fun Application.module(testing: Boolean = false) {
         }
     }
 }
+
+private fun mapMedicalsOnline(): List<MedicalDTO> = medChannels.values.map { MedicalDTO(it.hostSession.medical) }
 
