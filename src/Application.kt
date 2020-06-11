@@ -140,6 +140,7 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
         println("Websocket close received")
     } catch (e: Throwable) {
         e.printStackTrace()
+        session.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "Error while handling session"))
     } finally {
         medChannels.disconnectUser(connectedUser)
         println("User disconnected from websocket: ${connectedUser.email}")
