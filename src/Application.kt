@@ -17,12 +17,11 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
 import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
 import software.openmedrtc.Constants.PATH_REST
+import software.openmedrtc.Constants.PATH_USER_KEY
 import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
-import software.openmedrtc.database.entity.Channel
-import software.openmedrtc.database.entity.Medical
-import software.openmedrtc.database.entity.MedicalConnectionSession
+import software.openmedrtc.database.entity.*
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
 import java.util.concurrent.ConcurrentHashMap
@@ -81,17 +80,32 @@ fun Application.module(testing: Boolean = false) {
 
         // Socket
         authenticate(AUTHENTICATION_KEY_BASIC) {
-            webSocket(PATH_WEBSOCKET) {
+            webSocket("$PATH_WEBSOCKET/{$PATH_USER_KEY?}") {
                 val principal: UserIdPrincipal? = call.authentication.principal()
                 val connectedUser = UserDatabase.usersRegistered[principal?.name] ?: return@webSocket
 
                 println("User connected to websocket: ${connectedUser.email}")
                 send(Frame.Text("Successfully connected"))
 
-                if (connectedUser is Medical) {
-                    medChannels[connectedUser.email] =
-                        Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
-                    println("Channel created")
+                // TODO add error cases
+                when(connectedUser) {
+                    is Medical -> {
+                        medChannels[connectedUser.email] =
+                            Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
+                        println("Channel created")
+                    }
+                    is Patient -> {
+                        val param: String? = call.parameters[PATH_USER_KEY]
+
+                        if (param == null) {
+                            println("Wrong parameter given with socket call")
+                            return@webSocket
+                        }
+
+                        val channelToConnect = medChannels[param]
+                        channelToConnect?.patientSessions?.add(PatientConnectionSession(connectedUser, this))
+                        print("Patient joined channel")
+                    }
                 }
 
                 try {
