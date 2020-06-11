@@ -1,6 +1,7 @@
 package software.openmedrtc
 
 import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
 import io.ktor.application.*
 import io.ktor.response.*
 import io.ktor.request.*
@@ -16,15 +17,19 @@ import io.ktor.gson.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
 import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
+import software.openmedrtc.Constants.MESSAGE_TYPE_ICE_CANDIDATE
+import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_ANSWER
+import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_OFFER
 import software.openmedrtc.Constants.PATH_REST
 import software.openmedrtc.Constants.PATH_USER_KEY
 import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
-import software.openmedrtc.exception.ConnectionException
+import software.openmedrtc.exception.SocketConnectionException
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
+import java.lang.Exception
 import java.util.concurrent.ConcurrentHashMap
 
 private val gson = Gson()
@@ -91,10 +96,10 @@ fun Application.module(testing: Boolean = false) {
 private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSession) {
     try {
         val principal: UserIdPrincipal = session.call.authentication.principal()
-            ?: throw ConnectionException("Could not find principal")
+            ?: throw SocketConnectionException("Could not find principal")
 
         val connectedUser = UserDatabase.usersRegistered[principal.name]
-            ?: throw ConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
+            ?: throw SocketConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
 
         println("User connected to websocket: ${connectedUser.email}")
         session.send(Frame.Text("Successfully connected"))
@@ -107,21 +112,21 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
             }
             is Patient -> {
                 val param: String = session.call.parameters[PATH_USER_KEY]
-                    ?: throw ConnectionException("Wrong parameter given with socket call")
+                    ?: throw SocketConnectionException("Wrong parameter given with socket call")
 
                 val channelToConnect =
-                    medChannels[param] ?: throw ConnectionException("No channel found with given parameter")
+                    medChannels[param] ?: throw SocketConnectionException("No channel found with given parameter")
 
                 channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, session))
                 println("Patient joined channel")
             }
-            else -> throw ConnectionException("Wrong type") // TODO
+            else -> throw SocketConnectionException("Wrong type") // TODO
         }
 
         handleWebsocketExchange(session, connectedUser)
 
-    } catch (connectionException: ConnectionException) {
-        connectionException.printStackTrace()
+    } catch (socketConnectionException: SocketConnectionException) {
+        socketConnectionException.printStackTrace()
         return
     }
 }
@@ -133,7 +138,14 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
             if (frame is Frame.Text) {
                 val message = frame.readText()
                 println("Message received: $message")
-                session.send(Frame.Text("Client said: $message"))
+
+                try {
+                    val dataMessage = gson.fromJson(message, DataMessage::class.java)
+
+                    handleDataMessage(dataMessage)
+                } catch (exception: JsonSyntaxException) {
+                    println("Message type not valid")
+                }
             }
         }
     } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
@@ -144,5 +156,14 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
     } finally {
         medChannels.disconnectUser(connectedUser)
         println("User disconnected from websocket: ${connectedUser.email}")
+    }
+}
+
+private suspend fun handleDataMessage(dataMessage: DataMessage?) { // TODO NullPointer from Java
+    when (dataMessage?.messageType) {
+        MESSAGE_TYPE_SDP_OFFER, MESSAGE_TYPE_SDP_ANSWER, MESSAGE_TYPE_ICE_CANDIDATE -> {
+            println("Relaying Message")
+            // TODO
+        }
     }
 }
