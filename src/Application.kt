@@ -82,43 +82,47 @@ fun Application.module(testing: Boolean = false) {
         // Socket
         authenticate(AUTHENTICATION_KEY_BASIC) {
             webSocket("$PATH_WEBSOCKET/{$PATH_USER_KEY?}") {
-                val principal: UserIdPrincipal? = call.authentication.principal()
-
-                try {
-                    val connectedUser = UserDatabase.usersRegistered[principal?.name]
-                        ?: throw ConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
-
-                    println("User connected to websocket: ${connectedUser.email}")
-                    send(Frame.Text("Successfully connected"))
-
-                    when(connectedUser) {
-                        is Medical -> {
-                            medChannels[connectedUser.email] =
-                                Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
-                            println("Channel created")
-                        }
-                        is Patient -> {
-                            val param: String = call.parameters[PATH_USER_KEY]
-                                ?: throw ConnectionException("Wrong parameter given with socket call")
-
-                            val channelToConnect =
-                                medChannels[param] ?: throw ConnectionException("No channel found with given parameter")
-
-                            channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, this))
-                            println("Patient joined channel")
-                        }
-                        else -> throw ConnectionException("Wrong type") // TODO
-                    }
-
-                    handleWebsocketExchange(this, connectedUser)
-
-                } catch (connectionException: ConnectionException) {
-                    connectionException.printStackTrace()
-                    return@webSocket
-                }
-
+                initWebsocketConnection(this)
             }
         }
+    }
+}
+
+private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSession) {
+    try {
+        val principal: UserIdPrincipal = session.call.authentication.principal()
+            ?: throw ConnectionException("Could not find principal")
+
+        val connectedUser = UserDatabase.usersRegistered[principal.name]
+            ?: throw ConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
+
+        println("User connected to websocket: ${connectedUser.email}")
+        session.send(Frame.Text("Successfully connected"))
+
+        when (connectedUser) {
+            is Medical -> {
+                medChannels[connectedUser.email] =
+                    Channel(MedicalConnectionSession(connectedUser, session), mutableListOf())
+                println("Channel created")
+            }
+            is Patient -> {
+                val param: String = session.call.parameters[PATH_USER_KEY]
+                    ?: throw ConnectionException("Wrong parameter given with socket call")
+
+                val channelToConnect =
+                    medChannels[param] ?: throw ConnectionException("No channel found with given parameter")
+
+                channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, session))
+                println("Patient joined channel")
+            }
+            else -> throw ConnectionException("Wrong type") // TODO
+        }
+
+        handleWebsocketExchange(session, connectedUser)
+
+    } catch (connectionException: ConnectionException) {
+        connectionException.printStackTrace()
+        return
     }
 }
 
