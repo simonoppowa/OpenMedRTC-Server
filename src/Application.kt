@@ -22,6 +22,7 @@ import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
+import software.openmedrtc.exception.ConnectionException
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
 import java.util.concurrent.ConcurrentHashMap
@@ -82,51 +83,61 @@ fun Application.module(testing: Boolean = false) {
         authenticate(AUTHENTICATION_KEY_BASIC) {
             webSocket("$PATH_WEBSOCKET/{$PATH_USER_KEY?}") {
                 val principal: UserIdPrincipal? = call.authentication.principal()
-                val connectedUser = UserDatabase.usersRegistered[principal?.name] ?: return@webSocket
-
-                println("User connected to websocket: ${connectedUser.email}")
-                send(Frame.Text("Successfully connected"))
-
-                // TODO add error cases
-                when(connectedUser) {
-                    is Medical -> {
-                        medChannels[connectedUser.email] =
-                            Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
-                        println("Channel created")
-                    }
-                    is Patient -> {
-                        val param: String? = call.parameters[PATH_USER_KEY]
-
-                        if (param == null) {
-                            println("Wrong parameter given with socket call")
-                            return@webSocket
-                        }
-
-                        val channelToConnect = medChannels[param]
-                        channelToConnect?.patientSessions?.add(PatientConnectionSession(connectedUser, this))
-                        print("Patient joined channel")
-                    }
-                }
 
                 try {
-                    while (true) {
-                        val frame = incoming.receive()
-                        if (frame is Frame.Text) {
-                            val message = frame.readText()
-                            println("Message received: $message")
-                            send(Frame.Text("Client said: $message"))
+                    val connectedUser = UserDatabase.usersRegistered[principal?.name]
+                        ?: throw ConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
+
+                    println("User connected to websocket: ${connectedUser.email}")
+                    send(Frame.Text("Successfully connected"))
+
+                    when(connectedUser) {
+                        is Medical -> {
+                            medChannels[connectedUser.email] =
+                                Channel(MedicalConnectionSession(connectedUser, this), mutableListOf())
+                            println("Channel created")
                         }
+                        is Patient -> {
+                            val param: String = call.parameters[PATH_USER_KEY]
+                                ?: throw ConnectionException("Wrong parameter given with socket call")
+
+                            val channelToConnect =
+                                medChannels[param] ?: throw ConnectionException("No channel found with given parameter")
+
+                            channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, this))
+                            println("Patient joined channel")
+                        }
+                        else -> throw ConnectionException("Wrong type") // TODO
                     }
-                } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
-                    println("Websocket close received")
-                } catch (e: Throwable) {
-                    e.printStackTrace()
-                } finally {
-                    medChannels.disconnectUser(connectedUser)
-                    println("User disconnected from websocket: ${connectedUser.email}")
+
+                    handleWebsocketExchange(this, connectedUser)
+
+                } catch (connectionException: ConnectionException) {
+                    connectionException.printStackTrace()
+                    return@webSocket
                 }
 
             }
         }
+    }
+}
+
+private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSession, connectedUser: User) {
+    try {
+        while (true) {
+            val frame = session.incoming.receive()
+            if (frame is Frame.Text) {
+                val message = frame.readText()
+                println("Message received: $message")
+                session.send(Frame.Text("Client said: $message"))
+            }
+        }
+    } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
+        println("Websocket close received")
+    } catch (e: Throwable) {
+        e.printStackTrace()
+    } finally {
+        medChannels.disconnectUser(connectedUser)
+        println("User disconnected from websocket: ${connectedUser.email}")
     }
 }
