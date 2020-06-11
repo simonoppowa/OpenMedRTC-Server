@@ -13,14 +13,20 @@ object Extensions {
         values.map { MedicalDTO(it.hostSession.medical) }
 
     fun ConcurrentHashMap<String, Channel>.disconnectUser(user: User) {
-        if(user is Medical) {
+        if (user is Medical) {
+            // Close channel
             try {
                 this.remove(user.email)
             } catch (exception: NullPointerException) {
                 println("No user to disconnect found")
             }
-        } else if(user is Patient) {
-            // TODO disconnect patient
+        } else if (user is Patient) {
+            // Disconnect patient from channel
+            for (channel in this.values) {
+                if (channel.hasPatientConnected(user)) {
+                    channel.patientSessions.removeAll { it.patient.email == user.email }
+                }
+            }
         }
     }
 }
