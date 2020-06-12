@@ -159,7 +159,7 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
 
 private suspend fun handleDataMessage(message: String, connectedUser: User) {
     try {
-        val dataMessage = gson.fromJson(message, DataMessage::class.java) // TODO null fields
+        val dataMessage = gson.fromJson(message, DataMessage::class.java)
         when (dataMessage?.messageType) {
             MESSAGE_TYPE_SDP_OFFER, MESSAGE_TYPE_SDP_ANSWER, MESSAGE_TYPE_ICE_CANDIDATE -> {
                 relayMessage(message, dataMessage, connectedUser)
@@ -181,14 +181,15 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
             // TODO
         }
         is Patient -> {
-            val relayMessage: RelayMessage? = gson.fromJson(dataMessage.json, RelayMessage::class.java) // TODO null fields
+            val relayMessage: RelayMessage = gson.fromJson(dataMessage.json, RelayMessage::class.java)
+                ?: throw JsonParseException("Relay message null")
 
-            val channel = medChannels[relayMessage?.toUser]
-            val medicalSession = channel?.hostSession
-            val relayId = medicalSession?.medical?.email
+            val channel = medChannels[relayMessage.toUser] ?: throw SocketConnectionException("Medical not connected")
+            val medicalSession = channel.hostSession 
+            val relayId = medicalSession.medical.email
             println("Relaying message to $relayId")
 
-            medicalSession?.webSocketSession?.send(Frame.Text(messageRaw))
+            medicalSession.webSocketSession.send(Frame.Text(messageRaw))
         }
     }
 }
