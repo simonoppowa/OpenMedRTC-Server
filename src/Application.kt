@@ -1,6 +1,7 @@
 package software.openmedrtc
 
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonParseException
 import com.google.gson.JsonSyntaxException
 import io.ktor.application.*
 import io.ktor.response.*
@@ -27,12 +28,13 @@ import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
 import software.openmedrtc.exception.SocketConnectionException
+import software.openmedrtc.helper.AnnotatedDeserializer
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
-import java.lang.Exception
 import java.util.concurrent.ConcurrentHashMap
 
-private val gson = Gson()
+private val gson = GsonBuilder().registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
+    .registerTypeAdapter(RelayMessage::class.java, AnnotatedDeserializer<RelayMessage>()).create()
 private val medChannels = ConcurrentHashMap<String, Channel>()
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -60,6 +62,8 @@ fun Application.module(testing: Boolean = false) {
     install(ContentNegotiation) {
         gson {
             setPrettyPrinting()
+            registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
+            registerTypeAdapter(RelayMessage::class.java, AnnotatedDeserializer<RelayMessage>())
         }
     }
     install(io.ktor.websocket.WebSockets) {
@@ -164,6 +168,8 @@ private suspend fun handleDataMessage(message: String, connectedUser: User) {
 
     } catch (syntaxException: JsonSyntaxException) {
         println("Message has wrong type")
+    } catch (parseException: JsonParseException) {
+        println(parseException.localizedMessage)
     } catch (e: Throwable) {
         e.printStackTrace()
     }

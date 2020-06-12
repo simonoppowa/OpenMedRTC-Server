@@ -1,3 +1,5 @@
 package software.openmedrtc
 
-data class DataMessage(val messageType: String , val json: String)
+import software.openmedrtc.helper.JsonRequired
+
+data class DataMessage(@JsonRequired val messageType: String, @JsonRequired val json: String)
