@@ -176,18 +176,25 @@ private suspend fun handleDataMessage(message: String, connectedUser: User) {
 }
 
 private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, connectedUser: User) {
+    val relayMessage: RelayMessage = gson.fromJson(dataMessage.json, RelayMessage::class.java)
+        ?: throw JsonParseException("Relay message null")
+
     when (connectedUser) {
         is Medical -> {
-            // TODO
+            val channel = medChannels[connectedUser.email]
+                ?: throw SocketConnectionException("No channel found to connected medical")
+            val userSession =
+                channel.patientSessions.firstOrNull { it.patient.email == relayMessage.toUser }
+                    ?: throw SocketConnectionException("Patient to relay not connected")
+            println("Relaying message to patient: ${userSession.patient.email}")
+
+            userSession.webSocketSession.send(Frame.Text(messageRaw))
         }
         is Patient -> {
-            val relayMessage: RelayMessage = gson.fromJson(dataMessage.json, RelayMessage::class.java)
-                ?: throw JsonParseException("Relay message null")
-
-            val channel = medChannels[relayMessage.toUser] ?: throw SocketConnectionException("Medical not connected")
-            val medicalSession = channel.hostSession 
-            val relayId = medicalSession.medical.email
-            println("Relaying message to $relayId")
+            val channel =
+                medChannels[relayMessage.toUser] ?: throw SocketConnectionException("Medical to relay not connected")
+            val medicalSession = channel.hostSession
+            println("Relaying message to medical: ${medicalSession.medical.email}")
 
             medicalSession.webSocketSession.send(Frame.Text(messageRaw))
         }
