@@ -29,6 +29,7 @@ import software.openmedrtc.database.entity.*
 import software.openmedrtc.exception.SocketConnectionException
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
+import java.lang.Exception
 import java.util.concurrent.ConcurrentHashMap
 
 private val gson = Gson()
@@ -138,11 +139,7 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
                 val message = frame.readText()
                 println("Message received: $message")
 
-                try {
-                    handleDataMessage(message, connectedUser)
-                } catch (exception: JsonSyntaxException) {
-                    println("Message type not valid")
-                }
+                handleDataMessage(message, connectedUser)
             }
         }
     } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
@@ -157,12 +154,18 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
 }
 
 private suspend fun handleDataMessage(message: String, connectedUser: User) {
-    val dataMessage = gson.fromJson(message, DataMessage::class.java)
-
-    when (dataMessage?.messageType) {
-        MESSAGE_TYPE_SDP_OFFER, MESSAGE_TYPE_SDP_ANSWER, MESSAGE_TYPE_ICE_CANDIDATE -> {
-            relayMessage(message, dataMessage, connectedUser)
+    try {
+        val dataMessage = gson.fromJson(message, DataMessage::class.java) // TODO null fields
+        when (dataMessage?.messageType) {
+            MESSAGE_TYPE_SDP_OFFER, MESSAGE_TYPE_SDP_ANSWER, MESSAGE_TYPE_ICE_CANDIDATE -> {
+                relayMessage(message, dataMessage, connectedUser)
+            }
         }
+
+    } catch (syntaxException: JsonSyntaxException) {
+        println("Message has wrong type")
+    } catch (e: Throwable) {
+        e.printStackTrace()
     }
 }
 
@@ -172,9 +175,9 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
             // TODO
         }
         is Patient -> {
-            val relayMessage = gson.fromJson(dataMessage.json, RelayMessage::class.java)
+            val relayMessage: RelayMessage? = gson.fromJson(dataMessage.json, RelayMessage::class.java) // TODO null fields
 
-            val channel = medChannels[relayMessage.toUser] // TODO Exception handling
+            val channel = medChannels[relayMessage?.toUser]
             val medicalSession = channel?.hostSession
             val relayId = medicalSession?.medical?.email
             println("Relaying message to $relayId")
