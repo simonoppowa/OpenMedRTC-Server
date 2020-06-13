@@ -1,6 +1,8 @@
 package software.openmedrtc
 
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonParseException
+import com.google.gson.JsonSyntaxException
 import io.ktor.application.*
 import io.ktor.response.*
 import io.ktor.request.*
@@ -16,18 +18,23 @@ import io.ktor.gson.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
 import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
+import software.openmedrtc.Constants.MESSAGE_TYPE_ICE_CANDIDATE
+import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_ANSWER
+import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_OFFER
 import software.openmedrtc.Constants.PATH_REST
 import software.openmedrtc.Constants.PATH_USER_KEY
 import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
-import software.openmedrtc.exception.ConnectionException
+import software.openmedrtc.exception.SocketConnectionException
+import software.openmedrtc.helper.AnnotatedDeserializer
 import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
 import java.util.concurrent.ConcurrentHashMap
 
-private val gson = Gson()
+private val gson = GsonBuilder().registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
+    .registerTypeAdapter(RelayMessage::class.java, AnnotatedDeserializer<RelayMessage>()).create()
 private val medChannels = ConcurrentHashMap<String, Channel>()
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -55,6 +62,8 @@ fun Application.module(testing: Boolean = false) {
     install(ContentNegotiation) {
         gson {
             setPrettyPrinting()
+            registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
+            registerTypeAdapter(RelayMessage::class.java, AnnotatedDeserializer<RelayMessage>())
         }
     }
     install(io.ktor.websocket.WebSockets) {
@@ -91,10 +100,10 @@ fun Application.module(testing: Boolean = false) {
 private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSession) {
     try {
         val principal: UserIdPrincipal = session.call.authentication.principal()
-            ?: throw ConnectionException("Could not find principal")
+            ?: throw SocketConnectionException("Could not find principal")
 
         val connectedUser = UserDatabase.usersRegistered[principal.name]
-            ?: throw ConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
+            ?: throw SocketConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
 
         println("User connected to websocket: ${connectedUser.email}")
         session.send(Frame.Text("Successfully connected"))
@@ -102,26 +111,26 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
         when (connectedUser) {
             is Medical -> {
                 medChannels[connectedUser.email] =
-                    Channel(MedicalConnectionSession(connectedUser, session), mutableListOf())
+                    Channel(MedicalConnectionSession(connectedUser, session), mutableListOf()) // TODO make concurrent
                 println("Channel created")
             }
             is Patient -> {
                 val param: String = session.call.parameters[PATH_USER_KEY]
-                    ?: throw ConnectionException("Wrong parameter given with socket call")
+                    ?: throw SocketConnectionException("Wrong parameter given with socket call")
 
                 val channelToConnect =
-                    medChannels[param] ?: throw ConnectionException("No channel found with given parameter")
+                    medChannels[param] ?: throw SocketConnectionException("No channel found with given parameter")
 
                 channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, session))
                 println("Patient joined channel")
             }
-            else -> throw ConnectionException("Wrong type") // TODO
+            else -> throw SocketConnectionException("Wrong type") // TODO
         }
 
         handleWebsocketExchange(session, connectedUser)
 
-    } catch (connectionException: ConnectionException) {
-        connectionException.printStackTrace()
+    } catch (socketConnectionException: SocketConnectionException) {
+        socketConnectionException.printStackTrace()
         return
     }
 }
@@ -133,15 +142,61 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
             if (frame is Frame.Text) {
                 val message = frame.readText()
                 println("Message received: $message")
-                session.send(Frame.Text("Client said: $message"))
+
+                handleDataMessage(message, connectedUser)
             }
         }
     } catch (closedReceiveChannelException: ClosedReceiveChannelException) {
         println("Websocket close received")
     } catch (e: Throwable) {
         e.printStackTrace()
+        session.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "Error while handling session"))
     } finally {
         medChannels.disconnectUser(connectedUser)
         println("User disconnected from websocket: ${connectedUser.email}")
+    }
+}
+
+private suspend fun handleDataMessage(message: String, connectedUser: User) {
+    try {
+        val dataMessage = gson.fromJson(message, DataMessage::class.java)
+        when (dataMessage?.messageType) {
+            MESSAGE_TYPE_SDP_OFFER, MESSAGE_TYPE_SDP_ANSWER, MESSAGE_TYPE_ICE_CANDIDATE -> {
+                relayMessage(message, dataMessage, connectedUser)
+            }
+        }
+
+    } catch (syntaxException: JsonSyntaxException) {
+        println("Message has wrong type")
+    } catch (parseException: JsonParseException) {
+        println(parseException.localizedMessage)
+    } catch (e: Throwable) {
+        e.printStackTrace()
+    }
+}
+
+private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, connectedUser: User) {
+    val relayMessage: RelayMessage = gson.fromJson(dataMessage.json, RelayMessage::class.java)
+        ?: throw JsonParseException("Relay message null")
+
+    when (connectedUser) {
+        is Medical -> {
+            val channel = medChannels[connectedUser.email]
+                ?: throw SocketConnectionException("No channel found to connected medical")
+            val userSession =
+                channel.patientSessions.firstOrNull { it.patient.email == relayMessage.toUser }
+                    ?: throw SocketConnectionException("Patient to relay not connected")
+            println("Relaying message to patient: ${userSession.patient.email}")
+
+            userSession.webSocketSession.send(Frame.Text(messageRaw))
+        }
+        is Patient -> {
+            val channel =
+                medChannels[relayMessage.toUser] ?: throw SocketConnectionException("Medical to relay not connected")
+            val medicalSession = channel.hostSession
+            println("Relaying message to medical: ${medicalSession.medical.email}")
+
+            medicalSession.webSocketSession.send(Frame.Text(messageRaw))
+        }
     }
 }
