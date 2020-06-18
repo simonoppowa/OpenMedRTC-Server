@@ -31,8 +31,8 @@ import software.openmedrtc.database.entity.*
 import software.openmedrtc.dto.PatientDTO
 import software.openmedrtc.exception.SocketConnectionException
 import software.openmedrtc.helper.AnnotatedDeserializer
-import software.openmedrtc.helper.Extensions.disconnectUser
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
+import java.lang.NullPointerException
 import java.util.concurrent.ConcurrentHashMap
 
 private val gson = GsonBuilder().registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
@@ -105,32 +105,33 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
             ?: throw SocketConnectionException("Could not find principal")
 
         val connectedUser = UserDatabase.usersRegistered[principal.name]
-            ?: throw SocketConnectionException("No registered user found with given credentials") // TODO Remove hardcoded string
+            ?: throw SocketConnectionException("No registered user found with given credentials")
+        var channel: Channel? = null
 
         println("User connected to websocket: ${connectedUser.email}")
         session.send(Frame.Text("Successfully connected"))
 
         when (connectedUser) {
             is Medical -> {
-                medChannels[connectedUser.email] =
-                    Channel(MedicalConnectionSession(connectedUser, session), mutableListOf()) // TODO make concurrent
+                channel = Channel(MedicalConnectionSession(connectedUser, session), mutableListOf()) // TODO make concurrent
+                medChannels[connectedUser.email] = channel
                 println("Channel created")
             }
             is Patient -> {
                 val param: String = session.call.parameters[PATH_USER_KEY]
                     ?: throw SocketConnectionException("Wrong parameter given with socket call")
 
-                val channelToConnect =
+                 channel =
                     medChannels[param] ?: throw SocketConnectionException("No channel found with given parameter")
 
-                channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, session))
+                channel.patientSessions.add(PatientConnectionSession(connectedUser, session))
                 println("Patient joined channel")
-                notifyUserJoined(channelToConnect)
+                notifyConnectionChanged(channel)
             }
             else -> throw SocketConnectionException("Wrong type") // TODO
         }
 
-        handleWebsocketExchange(session, connectedUser)
+        handleWebsocketExchange(session, connectedUser, channel)
 
     } catch (socketConnectionException: SocketConnectionException) {
         socketConnectionException.printStackTrace()
@@ -138,7 +139,7 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
     }
 }
 
-private suspend fun notifyUserJoined(channel: Channel) {
+private suspend fun notifyConnectionChanged(channel: Channel) {
     val patientList = channel.mapPatientsDTOOnline().toTypedArray()
     val patientListJson = gson.toJson(patientList, Array<PatientDTO>::class.java)
     val patientsDataMessage = DataMessage(MESSAGE_TYPE_PATIENTS_LIST, patientListJson)
@@ -146,7 +147,11 @@ private suspend fun notifyUserJoined(channel: Channel) {
     channel.hostSession.webSocketSession.send(Frame.Text(gson.toJson(patientsDataMessage, DataMessage::class.java)))
 }
 
-private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSession, connectedUser: User) {
+private suspend fun handleWebsocketExchange(
+    session: DefaultWebSocketServerSession,
+    connectedUser: User,
+    channel: Channel
+) {
     try {
         while (true) {
             val frame = session.incoming.receive()
@@ -163,9 +168,9 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
         e.printStackTrace()
         session.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "Error while handling session"))
     } finally {
-        // TODO notify disconnect
-        medChannels.disconnectUser(connectedUser)
-        println("User disconnected from websocket: ${connectedUser.email}")
+        disconnectUser(connectedUser)
+        notifyConnectionChanged(channel)
+        println("User disconnected from channel: ${connectedUser.email}")
     }
 }
 
@@ -209,6 +214,25 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
             println("Relaying message to medical: ${medicalSession.medical.email}")
 
             medicalSession.webSocketSession.send(Frame.Text(messageRaw))
+        }
+    }
+}
+
+private fun disconnectUser(user: User) {
+    if (user is Medical) {
+        // Close channel
+        try {
+            medChannels.remove(user.email)
+            println("Channel closed")
+        } catch (exception: NullPointerException) {
+            println("No user to disconnect found")
+        }
+    } else if (user is Patient) {
+        // Disconnect patient from channel
+        for (channel in medChannels.values) {
+            if (channel.hasPatientConnected(user)) {
+                channel.patientSessions.removeAll { it.patient.email == user.email }
+            }
         }
     }
 }
