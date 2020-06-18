@@ -19,6 +19,7 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import software.openmedrtc.Constants.AUTHENTICATION_KEY_BASIC
 import software.openmedrtc.Constants.AUTHENTICATION_REALM_BASIC
 import software.openmedrtc.Constants.MESSAGE_TYPE_ICE_CANDIDATE
+import software.openmedrtc.Constants.MESSAGE_TYPE_PATIENTS_LIST
 import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_ANSWER
 import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_OFFER
 import software.openmedrtc.Constants.PATH_REST
@@ -27,6 +28,7 @@ import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
+import software.openmedrtc.dto.PatientDTO
 import software.openmedrtc.exception.SocketConnectionException
 import software.openmedrtc.helper.AnnotatedDeserializer
 import software.openmedrtc.helper.Extensions.disconnectUser
@@ -123,6 +125,7 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
 
                 channelToConnect.patientSessions.add(PatientConnectionSession(connectedUser, session))
                 println("Patient joined channel")
+                notifyUserJoined(channelToConnect)
             }
             else -> throw SocketConnectionException("Wrong type") // TODO
         }
@@ -133,6 +136,14 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
         socketConnectionException.printStackTrace()
         return
     }
+}
+
+private suspend fun notifyUserJoined(channel: Channel) {
+    val patientList = channel.mapPatientsDTOOnline().toTypedArray()
+    val patientListJson = gson.toJson(patientList, Array<PatientDTO>::class.java)
+    val patientsDataMessage = DataMessage(MESSAGE_TYPE_PATIENTS_LIST, patientListJson)
+
+    channel.hostSession.webSocketSession.send(Frame.Text(gson.toJson(patientsDataMessage, DataMessage::class.java)))
 }
 
 private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSession, connectedUser: User) {
@@ -152,6 +163,7 @@ private suspend fun handleWebsocketExchange(session: DefaultWebSocketServerSessi
         e.printStackTrace()
         session.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "Error while handling session"))
     } finally {
+        // TODO notify disconnect
         medChannels.disconnectUser(connectedUser)
         println("User disconnected from websocket: ${connectedUser.email}")
     }
