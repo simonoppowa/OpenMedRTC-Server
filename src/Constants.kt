@@ -6,6 +6,7 @@ object Constants {
 
     const val PATH_WEBSITE = "/"
     const val PATH_WEBSOCKET = "/connect"
+    const val PATH_AUTH = "/auth"
     const val PATH_REST = "/rest"
     const val PATH_USER_KEY = "userKey"
 

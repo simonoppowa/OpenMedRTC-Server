@@ -22,6 +22,7 @@ import software.openmedrtc.Constants.MESSAGE_TYPE_ICE_CANDIDATE
 import software.openmedrtc.Constants.MESSAGE_TYPE_PATIENTS_LIST
 import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_ANSWER
 import software.openmedrtc.Constants.MESSAGE_TYPE_SDP_OFFER
+import software.openmedrtc.Constants.PATH_AUTH
 import software.openmedrtc.Constants.PATH_REST
 import software.openmedrtc.Constants.PATH_USER_KEY
 import software.openmedrtc.Constants.PATH_WEBSITE
@@ -63,7 +64,7 @@ fun Application.module(testing: Boolean = false) {
     }
     install(ContentNegotiation) {
         gson {
-            setPrettyPrinting()
+            // setPrettyPrinting()
             registerTypeAdapter(DataMessage::class.java, AnnotatedDeserializer<DataMessage>())
             registerTypeAdapter(RelayMessage::class.java, AnnotatedDeserializer<RelayMessage>())
         }
@@ -75,7 +76,6 @@ fun Application.module(testing: Boolean = false) {
         masking = false
     }
 
-
     routing {
 
         // Website
@@ -85,6 +85,9 @@ fun Application.module(testing: Boolean = false) {
 
         // REST
         authenticate(AUTHENTICATION_KEY_BASIC) {
+            get(PATH_AUTH) {
+                call.respondText("authenticated", contentType = ContentType.Text.Plain)
+            }
             get(PATH_REST) {
                 call.respond(medChannels.mapMedicalsOnline())
             }
@@ -109,7 +112,6 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
         var channel: Channel? = null
 
         println("User connected to websocket: ${connectedUser.email}")
-        session.send(Frame.Text("Successfully connected"))
 
         when (connectedUser) {
             is Medical -> {
