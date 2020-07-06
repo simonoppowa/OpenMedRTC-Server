@@ -5,11 +5,19 @@ abstract class User(
     val title: String,
     val firstName: String,
     val lastName: String,
-    val passwordHash: String
+    val passwordHash: String,
+    val profilePicUrl: String
 )
 
-class Patient(email: String, title: String, firstName: String, lastName: String, passwordHash: String) :
-    User(email, title, firstName, lastName, passwordHash)
+class Patient(
+    email: String,
+    title: String,
+    firstName: String,
+    lastName: String,
+    passwordHash: String,
+    profilePicUrl: String
+) :
+    User(email, title, firstName, lastName, passwordHash, profilePicUrl)
 
 class Medical(
     email: String,
@@ -17,7 +25,8 @@ class Medical(
     firstName: String,
     lastName: String,
     passwordHash: String,
+    profilePicUrl: String,
     val description: String,
     val waitingTime: Int = 15
 ) :
-    User(email, title, firstName, lastName, passwordHash)
+    User(email, title, firstName, lastName, passwordHash, profilePicUrl)
