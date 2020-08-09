@@ -29,7 +29,9 @@ import software.openmedrtc.Constants.PATH_WEBSITE
 import software.openmedrtc.Constants.PATH_WEBSOCKET
 import software.openmedrtc.database.UserDatabase
 import software.openmedrtc.database.entity.*
+import software.openmedrtc.dto.MedicalDTO
 import software.openmedrtc.dto.PatientDTO
+import software.openmedrtc.exception.ConnectionException
 import software.openmedrtc.exception.SocketConnectionException
 import software.openmedrtc.helper.AnnotatedDeserializer
 import software.openmedrtc.helper.Extensions.mapMedicalsOnline
@@ -80,13 +82,28 @@ fun Application.module(testing: Boolean = false) {
 
         // Website
         get(PATH_WEBSITE) {
-            call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
+            // call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
         // REST
         authenticate(AUTHENTICATION_KEY_BASIC) {
             get(PATH_AUTH) {
-                call.respondText("authenticated", contentType = ContentType.Text.Plain)
+                try {
+                    val userDTO = when (val connectedUser = getUserFromSession(this.call)) {
+                        is Medical -> {
+                            MedicalDTO(connectedUser)
+                        }
+                        is Patient -> {
+                            PatientDTO(connectedUser)
+                        }
+                        else -> {
+                            return@get
+                        }
+                    }
+                    call.respond(userDTO)
+                } catch (connectionException: ConnectionException) {
+                    connectionException.printStackTrace()
+                }
             }
             get(PATH_REST) {
                 call.respond(medChannels.mapMedicalsOnline())
@@ -104,11 +121,7 @@ fun Application.module(testing: Boolean = false) {
 
 private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSession) {
     try {
-        val principal: UserIdPrincipal = session.call.authentication.principal()
-            ?: throw SocketConnectionException("Could not find principal")
-
-        val connectedUser = UserDatabase.usersRegistered[principal.name]
-            ?: throw SocketConnectionException("No registered user found with given credentials")
+        val connectedUser = getUserFromSession(session.call)
         var channel: Channel? = null
 
         println("User connected to websocket: ${connectedUser.email}")
@@ -218,6 +231,14 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
             medicalSession.webSocketSession.send(Frame.Text(messageRaw))
         }
     }
+}
+
+private fun getUserFromSession(call: ApplicationCall ): User {
+    val principal: UserIdPrincipal = call.authentication.principal()
+        ?: throw ConnectionException("Could not find principal")
+
+    return UserDatabase.usersRegistered[principal.name]
+        ?: throw ConnectionException("No registered user found with given credentials")
 }
 
 private fun disconnectUser(user: User) {

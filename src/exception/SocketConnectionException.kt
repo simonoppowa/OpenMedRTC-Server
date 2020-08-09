@@ -1,3 +1,5 @@
 package software.openmedrtc.exception
 
-class SocketConnectionException(message: String) : Exception(message)
+open class ConnectionException(message: String) : Exception(message)
+class SocketConnectionException(message: String) : ConnectionException(message)
+class HttpConnectionException(message: String) : ConnectionException(message)

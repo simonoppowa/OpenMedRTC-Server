@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
 const val mockPicUrl = "https://picsum.photos/200"
 object UserDatabase {
     val usersRegistered = ConcurrentHashMap<String, User>().apply {
-        put("chrome@gmail.com", Medical("chrome@gmail.com", "Dr", "Chromium", "Chrome", "chrome", mockPicUrl, "General"))
-        put("android_29@gmail.com", Medical("android_29@gmail.com", "", "Android", "Pie", "test", mockPicUrl,"General"))
+        put("chrome@gmail.com", Medical("chrome@gmail.com", "Dr.", "Chromium", "Chrome", "chrome", mockPicUrl, "General Practitioner"))
+        put("android_29@gmail.com", Medical("android_29@gmail.com", "Dr.", "Android", "Pie", "test", mockPicUrl,"General Practitioner"))
         put("android_26@gmail.com", Patient("android_26@gmail.com", "", "Android", "Nougat", "test", mockPicUrl))
     }
 
