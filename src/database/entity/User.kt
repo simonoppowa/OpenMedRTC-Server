@@ -1,7 +1,7 @@
 package software.openmedrtc.database.entity
 
 abstract class User(
-    val email: String,
+    val id: String,
     val title: String,
     val firstName: String,
     val lastName: String,
@@ -10,17 +10,17 @@ abstract class User(
 )
 
 class Patient(
-    email: String,
+    id: String,
     title: String,
     firstName: String,
     lastName: String,
     passwordHash: String,
     profilePicUrl: String
 ) :
-    User(email, title, firstName, lastName, passwordHash, profilePicUrl)
+    User(id, title, firstName, lastName, passwordHash, profilePicUrl)
 
 class Medical(
-    email: String,
+    id: String,
     title: String,
     firstName: String,
     lastName: String,
@@ -29,4 +29,4 @@ class Medical(
     val description: String,
     val waitingTime: Int = 15
 ) :
-    User(email, title, firstName, lastName, passwordHash, profilePicUrl)
+    User(id, title, firstName, lastName, passwordHash, profilePicUrl)

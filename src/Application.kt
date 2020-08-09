@@ -9,7 +9,6 @@ import io.ktor.request.*
 import io.ktor.features.*
 import org.slf4j.event.*
 import io.ktor.routing.*
-import io.ktor.http.*
 import io.ktor.websocket.*
 import io.ktor.http.cio.websocket.*
 import java.time.*
@@ -124,12 +123,12 @@ private suspend fun initWebsocketConnection(session: DefaultWebSocketServerSessi
         val connectedUser = getUserFromSession(session.call)
         var channel: Channel? = null
 
-        println("User connected to websocket: ${connectedUser.email}")
+        println("User connected to websocket: ${connectedUser.id}")
 
         when (connectedUser) {
             is Medical -> {
                 channel = Channel(MedicalConnectionSession(connectedUser, session), mutableListOf()) // TODO make concurrent
-                medChannels[connectedUser.email] = channel
+                medChannels[connectedUser.id] = channel
                 println("Channel created")
             }
             is Patient -> {
@@ -185,7 +184,7 @@ private suspend fun handleWebsocketExchange(
     } finally {
         disconnectUser(connectedUser)
         notifyConnectionChanged(channel)
-        println("User disconnected from channel: ${connectedUser.email}")
+        println("User disconnected from channel: ${connectedUser.id}")
     }
 }
 
@@ -213,12 +212,12 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
 
     when (connectedUser) {
         is Medical -> {
-            val channel = medChannels[connectedUser.email]
+            val channel = medChannels[connectedUser.id]
                 ?: throw SocketConnectionException("No channel found to connected medical")
             val userSession =
-                channel.patientSessions.firstOrNull { it.patient.email == relayMessage.toUser }
+                channel.patientSessions.firstOrNull { it.patient.id == relayMessage.toUser }
                     ?: throw SocketConnectionException("Patient to relay not connected")
-            println("Relaying message to patient: ${userSession.patient.email}")
+            println("Relaying message to patient: ${userSession.patient.id}")
 
             userSession.webSocketSession.send(Frame.Text(messageRaw))
         }
@@ -226,7 +225,7 @@ private suspend fun relayMessage(messageRaw: String, dataMessage: DataMessage, c
             val channel =
                 medChannels[relayMessage.toUser] ?: throw SocketConnectionException("Medical to relay not connected")
             val medicalSession = channel.hostSession
-            println("Relaying message to medical: ${medicalSession.medical.email}")
+            println("Relaying message to medical: ${medicalSession.medical.id}")
 
             medicalSession.webSocketSession.send(Frame.Text(messageRaw))
         }
@@ -245,7 +244,7 @@ private fun disconnectUser(user: User) {
     if (user is Medical) {
         // Close channel
         try {
-            medChannels.remove(user.email)
+            medChannels.remove(user.id)
             println("Channel closed")
         } catch (exception: NullPointerException) {
             println("No user to disconnect found")
@@ -254,7 +253,7 @@ private fun disconnectUser(user: User) {
         // Disconnect patient from channel
         for (channel in medChannels.values) {
             if (channel.hasPatientConnected(user)) {
-                channel.patientSessions.removeAll { it.patient.email == user.email }
+                channel.patientSessions.removeAll { it.patient.id == user.id }
             }
         }
     }
