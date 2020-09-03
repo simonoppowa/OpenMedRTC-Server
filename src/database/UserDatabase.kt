@@ -9,11 +9,12 @@ import java.util.concurrent.ConcurrentHashMap
  * // TODO Remove Mock
  * A Simple database mock with demo users
  */
+const val mockPicUrl = "https://picsum.photos/200"
 object UserDatabase {
     val usersRegistered = ConcurrentHashMap<String, User>().apply {
-        put("chrome@gmail.com", Medical("chrome@gmail.com", "Dr", "Chromium", "Chrome", "chrome", "General"))
-        put("android_29@gmail.com", Medical("android_29@gmail.com", "", "Android", "Pie", "test", "General"))
-        put("android_26@gmail.com", Patient("android_26@gmail.com", "", "Android", "Nougat", "test"))
+        put("john_doe", Medical("john_doe", "Dr.", "John", "Doe", "chrome", mockPicUrl, "General Practitioner"))
+        put("sally_smith", Medical("sally_smith", "Dr.", "Sally", "Smith", "test", mockPicUrl,"General Practitioner"))
+        put("jane_smith", Patient("jane_smith", "", "Jane", "Smith", "test", mockPicUrl))
     }
 
 }
